@@ -1,12 +1,11 @@
-name: Build RenPy Android
+name: Build RenPy Android APK
 
 on:
-  push:
   workflow_dispatch:
+  push:
 
 
 jobs:
-
   build:
 
     runs-on: ubuntu-latest
@@ -14,16 +13,15 @@ jobs:
 
     steps:
 
-
     - name: Checkout
       uses: actions/checkout@v4
 
 
 
-    - name: Java
+    - name: Setup Java
       uses: actions/setup-java@v4
       with:
-        java-version: 17
+        java-version: '17'
         distribution: temurin
 
 
@@ -31,39 +29,45 @@ jobs:
     - name: Install tools
       run: |
         sudo apt update
-        sudo apt install -y ant unzip wget
+        sudo apt install -y wget unzip ant python3
 
 
 
-    - name: Android SDK
+    # Android SDK
+    - name: Setup Android SDK
       run: |
 
-        mkdir -p $HOME/android-sdk/cmdline-tools
+        SDK=$HOME/android-sdk
+
+        mkdir -p $SDK/cmdline-tools
+
 
         wget -q \
         https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip \
-        -O sdk.zip
+        -O tools.zip
 
 
-        unzip -q sdk.zip \
-        -d $HOME/android-sdk/cmdline-tools
+        unzip -q tools.zip -d $SDK/cmdline-tools
 
 
-        mv \
-        $HOME/android-sdk/cmdline-tools/cmdline-tools \
-        $HOME/android-sdk/cmdline-tools/latest
+        mkdir -p $SDK/cmdline-tools/latest
 
 
-        echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
+        mv $SDK/cmdline-tools/cmdline-tools/* \
+        $SDK/cmdline-tools/latest/
 
 
-        echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        echo "ANDROID_HOME=$SDK" >> $GITHUB_ENV
+        echo "ANDROID_SDK_ROOT=$SDK" >> $GITHUB_ENV
 
 
-        yes | sdkmanager --licenses || true
+        echo "$SDK/cmdline-tools/latest/bin" >> $GITHUB_PATH
 
 
-        sdkmanager \
+        yes | $SDK/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+
+        $SDK/cmdline-tools/latest/bin/sdkmanager \
         "platform-tools" \
         "platforms;android-35" \
         "build-tools;35.0.0"
@@ -71,22 +75,26 @@ jobs:
 
 
 
+    # 找游戏
     - name: Find Game
       run: |
 
-        if [ -f "game/options.rpy" ]; then
+        if [ -f game/options.rpy ]; then
 
-          echo "GAME_DIR=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+          echo "GAME=$GITHUB_WORKSPACE" >> $GITHUB_ENV
 
 
-        elif [ -f "mygame/game/options.rpy" ]; then
+        elif [ -f mygame/game/options.rpy ]; then
 
-          echo "GAME_DIR=$GITHUB_WORKSPACE/mygame" >> $GITHUB_ENV
+          echo "GAME=$GITHUB_WORKSPACE/mygame" >> $GITHUB_ENV
 
 
         else
 
-          echo "RenPy game not found"
+          echo "No RenPy game found"
+
+          find . -name options.rpy
+
           exit 1
 
         fi
@@ -94,8 +102,8 @@ jobs:
 
 
 
+    # 下载RenPy
     - name: Download RenPy
-
       run: |
 
         wget -q \
@@ -103,7 +111,6 @@ jobs:
 
 
         tar -xjf renpy-8.5.3-sdk.tar.bz2
-
 
 
         wget -q \
@@ -117,48 +124,57 @@ jobs:
 
 
 
-
-    - name: Configure Android
-
+    # 配置
+    - name: Configure
       run: |
 
-        cd renpy-8.5.3-sdk
+        cd $GAME
 
 
-        ./renpy.sh launcher android_configure
-
-
-
-
-    - name: Build PC
-
-      run: |
-
-        cd renpy-8.5.3-sdk
-
-
-        ./renpy.sh launcher distribute \
-        "$GAME_DIR" \
-        --package pc
+        keytool \
+        -genkeypair \
+        -v \
+        -keystore key.keystore \
+        -alias key \
+        -keyalg RSA \
+        -keysize 2048 \
+        -validity 10000 \
+        -storepass android \
+        -keypass android \
+        -dname "CN=RenPy"
 
 
 
+        cat > android.json <<EOF
+{
+"package":"com.minc.game",
+"name":"民中",
+"version":"1.0",
+"numeric_version":1,
+"orientation":"landscape",
+"permissions":[
+"INTERNET"
+]
+}
+EOF
 
+
+
+
+    # APK
     - name: Build APK
-
       run: |
 
         cd renpy-8.5.3-sdk
 
 
         ./renpy.sh launcher android_build \
-        "$GAME_DIR"
+        "$GAME"
 
 
 
-
+    # 找APK
     - name: Find APK
-
       run: |
 
         find . -name "*.apk"
@@ -167,26 +183,10 @@ jobs:
 
 
     - name: Upload APK
-
       uses: actions/upload-artifact@v4
-
       with:
 
-        name: RenPy-APK
+        name: apk
 
         path: |
           **/*.apk
-
-
-
-
-    - name: Upload PC
-
-      uses: actions/upload-artifact@v4
-
-      with:
-
-        name: RenPy-PC
-
-        path: |
-          **/*.zip
