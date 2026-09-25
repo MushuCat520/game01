@@ -59,7 +59,7 @@ jobs:
       - name: Configure
         run: |
           cd $GAME
-          keytool -genkeypair -v -keystore key.keystore -alias key -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=RenPy"
+          keytool -genkeypair -v -keystore key.keystore -alias android -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=RenPy"
           cp key.keystore "$GITHUB_WORKSPACE/android.keystore"
           cat > android.json <<EOF
           {
