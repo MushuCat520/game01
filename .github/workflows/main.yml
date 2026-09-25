@@ -1,4 +1,4 @@
-name: Build RenPy APK
+name: Build RenPy Android
 
 on:
   push:
@@ -6,6 +6,7 @@ on:
 
 
 jobs:
+
   build:
 
     runs-on: ubuntu-latest
@@ -19,26 +20,25 @@ jobs:
 
 
 
-    - name: Setup Java
+    - name: Java
       uses: actions/setup-java@v4
       with:
-        java-version: "21"
-        distribution: "temurin"
+        java-version: 17
+        distribution: temurin
 
 
 
-    - name: Install Tools
+    - name: Install tools
       run: |
         sudo apt update
         sudo apt install -y ant unzip wget
 
 
 
-    - name: Setup Android SDK
+    - name: Android SDK
       run: |
 
         mkdir -p $HOME/android-sdk/cmdline-tools
-
 
         wget -q \
         https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip \
@@ -54,38 +54,19 @@ jobs:
         $HOME/android-sdk/cmdline-tools/latest
 
 
-
         echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
-
-        echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
 
 
         echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
 
 
-
-        export PATH=$HOME/android-sdk/cmdline-tools/latest/bin:$PATH
-
-
-
         yes | sdkmanager --licenses || true
-
 
 
         sdkmanager \
         "platform-tools" \
         "platforms;android-35" \
         "build-tools;35.0.0"
-
-
-
-
-    - name: Check SDK
-      run: |
-
-        echo $ANDROID_HOME
-
-        ls $ANDROID_HOME/cmdline-tools/latest/bin
 
 
 
@@ -105,10 +86,7 @@ jobs:
 
         else
 
-          echo "Cannot find RenPy game"
-
-          find . -name options.rpy
-
+          echo "RenPy game not found"
           exit 1
 
         fi
@@ -117,8 +95,8 @@ jobs:
 
 
     - name: Download RenPy
-      run: |
 
+      run: |
 
         wget -q \
         https://www.renpy.org/dl/8.5.3/renpy-8.5.3-sdk.tar.bz2
@@ -132,74 +110,83 @@ jobs:
         https://www.renpy.org/dl/8.5.3/renpy-8.5.3-rapt.zip
 
 
-
         unzip -q \
         renpy-8.5.3-rapt.zip \
-        -d renpy-8.5.3-sdk
+        -d renpy-8.5.3-sdk/
 
 
 
 
-    - name: Prepare Android
+
+    - name: Configure Android
+
       run: |
 
+        cd renpy-8.5.3-sdk
 
-        cd "$GAME_DIR"
+
+        ./renpy.sh launcher android_configure
 
 
-        keytool -genkeypair \
-        -keystore android.keystore \
-        -alias android \
-        -keyalg RSA \
-        -keysize 2048 \
-        -validity 10000 \
-        -storepass android \
-        -keypass android \
-        -dname "CN=RenPy"
+
+
+    - name: Build PC
+
+      run: |
+
+        cd renpy-8.5.3-sdk
+
+
+        ./renpy.sh launcher distribute \
+        "$GAME_DIR" \
+        --package pc
 
 
 
 
     - name: Build APK
-      run: |
 
+      run: |
 
         cd renpy-8.5.3-sdk
 
 
         ./renpy.sh launcher android_build \
-        "$GAME_DIR" \
-        --destination "$GAME_DIR/bin"
+        "$GAME_DIR"
 
 
 
 
-    - name: Check APK
+    - name: Find APK
+
       run: |
 
-
-        find "$GAME_DIR" \
-        -name "*.apk" \
-        -type f \
-        -exec ls -lh {} \;
+        find . -name "*.apk"
 
 
 
 
     - name: Upload APK
+
       uses: actions/upload-artifact@v4
+
       with:
 
-        name: renpy-apk
+        name: RenPy-APK
 
-        path: "**/bin/*.apk"
+        path: |
+          **/*.apk
+
 
 
 
     - name: Upload PC
+
       uses: actions/upload-artifact@v4
+
       with:
 
-        name: renpy-pc
+        name: RenPy-PC
 
-        path: "**/dist/*.zip"
+        path: |
+          **/*.zip
