@@ -91,7 +91,7 @@ jobs:
       - name: Build Android APK
         run: |
           cd "$GITHUB_WORKSPACE/renpy-8.5.3-sdk"
-          ./renpy.sh launcher android_build "$GAME_DIR"
+          ./renpy.sh launcher android_build "$GAME_DIR" --destination "$GAME_DIR/bin"
 
       - name: Check APK Location
         run: |
@@ -111,5 +111,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mygame-apk
-          path: "**/*.apk"
+          path: "$GAME_DIR/bin/*.apk"
           if-no-files-found: error
