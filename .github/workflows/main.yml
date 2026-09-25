@@ -1,0 +1,81 @@
+name: Build Ren'Py Game
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ant unzip wget python3
+    - name: Set up Android SDK
+      run: |
+        export ANDROID_HOME="$HOME/android-sdk"
+        echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+        echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+        mkdir -p $ANDROID_HOME/cmdline-tools
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O sdk.zip
+        unzip -q sdk.zip -d $ANDROID_HOME/cmdline-tools
+        mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
+        echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-35" "build-tools;34.0.0"
+    - name: Detect Game Directory
+      run: |
+        set -e
+        if [ -d "$GITHUB_WORKSPACE/game" ]; then GAME_DIR="$GITHUB_WORKSPACE"; elif [ -d "$GITHUB_WORKSPACE/mygame/game" ]; then GAME_DIR="$GITHUB_WORKSPACE/mygame"; else echo "ERROR: game folder not found!"; exit 1; fi
+        echo "GAME_DIR=$GAME_DIR" >> $GITHUB_ENV
+    - name: Download Ren'Py SDK
+      run: |
+        wget -q https://www.renpy.org/dl/8.5.3/renpy-8.5.3-sdk.tar.bz2
+        tar -xjf renpy-8.5.3-sdk.tar.bz2
+        wget -q https://www.renpy.org/dl/8.5.3/renpy-8.5.3-rapt.zip
+        unzip -q renpy-8.5.3-rapt.zip -d renpy-8.5.3-sdk/
+    - name: Configure RAPT
+      run: |
+        cd $GITHUB_WORKSPACE/renpy-8.5.3-sdk/rapt
+        echo "$ANDROID_HOME" > sdk.txt
+        cd "$GAME_DIR"
+        keytool -genkeypair -v -keystore android.keystore -alias android -keyalg RSA -keysize 2048 -validity 20000 -storepass android -keypass android -dname "CN=RenPy Game,O=RenPy,C=US"
+        cat > android.json << 'EOF'
+        {
+            "package": "com.example.mygame",
+            "name": "民中",
+            "icon_name": "民中",
+            "version": "1.0",
+            "numeric_version": 1,
+            "orientation": "sensorLandscape",
+            "permissions": ["VIBRATE", "INTERNET"],
+            "store": "none",
+            "update_icons": true,
+            "update_always": true,
+            "heap_size": "4",
+            "update_keystores": true
+        }
+        EOF
+    - name: Build PC Package
+      run: |
+        cd $GITHUB_WORKSPACE/renpy-8.5.3-sdk
+        ./renpy.sh launcher distribute "$GAME_DIR" --package pc
+    - name: Build Android APK
+      run: |
+        cd $GITHUB_WORKSPACE/renpy-8.5.3-sdk
+        ./renpy.sh launcher android_build "$GAME_DIR" --destination "$GAME_DIR/bin"
+    - name: Upload PC Package
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: mygame-pc
+        path: mygame/dist/*.zip
+    - name: Upload APK
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: mygame-apk
+        path: mygame/bin/*.apk
