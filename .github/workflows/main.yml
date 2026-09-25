@@ -108,5 +108,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: apk
-          path: "$GAME/bin/*.apk"
+          path: "**/bin/*.apk"
           if-no-files-found: error
