@@ -1,4 +1,4 @@
-name: Build RenPy Game
+name: Build RenPy APK
 
 on:
   push:
@@ -31,83 +31,67 @@ jobs:
       run: |
         mkdir -p $HOME/android-sdk/cmdline-tools
 
-        wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O sdk.zip
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O sdk.zip
 
         unzip -q sdk.zip -d $HOME/android-sdk/cmdline-tools
 
         mv $HOME/android-sdk/cmdline-tools/cmdline-tools $HOME/android-sdk/cmdline-tools/latest
 
         echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
+
         echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
 
         yes | sdkmanager --licenses || true
 
-        sdkmanager \
-          "platform-tools" \
-          "platforms;android-35" \
-          "build-tools;35.0.0"
+        sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
 
 
     - name: Find Game
       run: |
-        if [ -f "game/options.rpy" ]; then
+        if [ -f game/options.rpy ]; then
           echo "GAME_DIR=$GITHUB_WORKSPACE" >> $GITHUB_ENV
-
-        elif [ -f "mygame/game/options.rpy" ]; then
-          echo "GAME_DIR=$GITHUB_WORKSPACE/mygame" >> $GITHUB_ENV
-
         else
-          echo "RenPy game not found"
+          echo "Game not found"
           exit 1
         fi
 
 
+
     - name: Download RenPy
       run: |
-        wget https://www.renpy.org/dl/8.5.3/renpy-8.5.3-sdk.tar.bz2
+        wget -q https://www.renpy.org/dl/8.5.3/renpy-8.5.3-sdk.tar.bz2
 
         tar -xjf renpy-8.5.3-sdk.tar.bz2
 
-        wget https://www.renpy.org/dl/8.5.3/renpy-8.5.3-rapt.zip
+        wget -q https://www.renpy.org/dl/8.5.3/renpy-8.5.3-rapt.zip
 
-        unzip -q renpy-8.5.3-rapt.zip -d renpy-8.5.3-sdk/
+        unzip -q renpy-8.5.3-rapt.zip -d renpy-8.5.3-sdk
 
 
-    - name: Android Config
+
+    - name: Prepare Android
       run: |
         cd "$GAME_DIR"
 
         keytool -genkeypair \
-          -keystore android.keystore \
-          -alias android \
-          -keyalg RSA \
-          -keysize 2048 \
-          -validity 10000 \
-          -storepass android \
-          -keypass android \
-          -dname "CN=RenPy"
+        -keystore android.keystore \
+        -alias android \
+        -keyalg RSA \
+        -keysize 2048 \
+        -validity 10000 \
+        -storepass android \
+        -keypass android \
+        -dname "CN=RenPy"
 
-        cat > android.json <<'END'
-{
- "package":"com.minc.game",
- "name":"民中",
- "version":"1.0",
- "numeric_version":1,
- "orientation":"sensorLandscape"
-}
-END
-
-
-    - name: Build PC
-      run: |
-        cd renpy-8.5.3-sdk
-        ./renpy.sh launcher distribute "$GAME_DIR" --package pc
 
 
     - name: Build APK
       run: |
         cd renpy-8.5.3-sdk
-        ./renpy.sh launcher android_build "$GAME_DIR" --destination "$GAME_DIR/bin"
+
+        ./renpy.sh launcher android_build "$GAME_DIR"
+
 
 
     - name: Find APK
@@ -115,15 +99,9 @@ END
         find . -name "*.apk"
 
 
+
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: apk
+        name: renpy-apk
         path: "**/*.apk"
-
-
-    - name: Upload PC
-      uses: actions/upload-artifact@v4
-      with:
-        name: pc
-        path: "**/*.zip"
