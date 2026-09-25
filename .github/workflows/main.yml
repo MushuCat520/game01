@@ -64,10 +64,23 @@ jobs:
           {
               "package": "com.minc.game",
               "name": "民中",
+              "icon_name": "民中",
               "version": "1.0",
               "numeric_version": 1,
-              "orientation": "landscape",
-              "permissions": ["INTERNET"]
+              "orientation": "sensorLandscape",
+              "permissions": ["VIBRATE", "INTERNET"],
+              "include_pil": false,
+              "include_sqlite": false,
+              "layout": null,
+              "source": false,
+              "expansion": false,
+              "google_play_key": null,
+              "google_play_salt": null,
+              "store": "none",
+              "update_icons": true,
+              "update_always": true,
+              "heap_size": "4",
+              "update_keystores": true
           }
           EOF
 
