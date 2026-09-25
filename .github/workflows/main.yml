@@ -1,4 +1,4 @@
-name: Build Ren'Py Game
+name: Build RenPy Game
 
 on:
   push:
@@ -13,42 +13,42 @@ jobs:
     steps:
 
 
-    # ==========================
-    # 获取源码
-    # ==========================
+    # =====================
+    # Checkout
+    # =====================
     - name: Checkout
       uses: actions/checkout@v4
 
 
 
-    # ==========================
+    # =====================
     # Java
-    # ==========================
-    - name: Set up JDK 21
+    # =====================
+    - name: Setup Java 21
       uses: actions/setup-java@v4
       with:
-        java-version: '21'
-        distribution: 'temurin'
+        java-version: "21"
+        distribution: "temurin"
 
 
 
-    # ==========================
-    # 工具
-    # ==========================
+    # =====================
+    # Dependencies
+    # =====================
     - name: Install Dependencies
       run: |
-        sudo apt-get update
-        sudo apt-get install -y \
+        sudo apt update
+        sudo apt install -y \
           ant \
           unzip \
           wget
 
 
 
-    # ==========================
+    # =====================
     # Android SDK
-    # ==========================
-    - name: Set up Android SDK
+    # =====================
+    - name: Setup Android SDK
       run: |
 
         export ANDROID_HOME=$HOME/android-sdk
@@ -75,7 +75,6 @@ jobs:
 
 
         echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
-        echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
 
 
         yes | sdkmanager --licenses || true
@@ -89,16 +88,13 @@ jobs:
 
 
 
-    # ==========================
-    # 找游戏目录
-    # ==========================
+    # =====================
+    # Find RenPy Game
+    # =====================
     - name: Detect Game Directory
       run: |
 
         set -e
-
-
-        echo "Searching RenPy project..."
 
 
         if [ -f "$GITHUB_WORKSPACE/game/options.rpy" ]; then
@@ -113,7 +109,7 @@ jobs:
 
         else
 
-          echo "No RenPy project found"
+          echo "Cannot find RenPy game!"
 
           find "$GITHUB_WORKSPACE" \
           -name options.rpy
@@ -123,15 +119,11 @@ jobs:
         fi
 
 
-
         echo "GAME_DIR=$GAME_DIR" >> $GITHUB_ENV
 
 
-
-        echo "======================"
         echo "Game directory:"
-        echo $GAME_DIR
-        echo "======================"
+        echo "$GAME_DIR"
 
 
         echo "Game size:"
@@ -140,10 +132,10 @@ jobs:
 
 
 
-    # ==========================
-    # 下载 RenPy
-    # ==========================
-    - name: Download RenPy SDK
+    # =====================
+    # Download RenPy
+    # =====================
+    - name: Download RenPy 8.5.3
       run: |
 
 
@@ -168,9 +160,9 @@ jobs:
 
 
 
-    # ==========================
-    # 配置 RAPT
-    # ==========================
+    # =====================
+    # Android Configure
+    # =====================
     - name: Configure Android
       run: |
 
@@ -185,19 +177,19 @@ jobs:
 
 
         keytool -genkeypair \
-        -v \
-        -keystore android.keystore \
-        -alias android \
-        -keyalg RSA \
-        -keysize 2048 \
-        -validity 20000 \
-        -storepass android \
-        -keypass android \
-        -dname "CN=RenPy Game,O=RenPy,C=US"
+          -v \
+          -keystore android.keystore \
+          -alias android \
+          -keyalg RSA \
+          -keysize 2048 \
+          -validity 20000 \
+          -storepass android \
+          -keypass android \
+          -dname "CN=RenPy Game,O=RenPy,C=US"
 
 
 
-        cat > android.json <<EOF
+        cat > android.json << 'EOF'
 {
     "package": "com.minc.game",
     "name": "民中",
@@ -217,9 +209,15 @@ EOF
 
 
 
-    # ==========================
-    # 构建 PC
-    # ==========================
+        echo "Android config:"
+        cat android.json
+
+
+
+
+    # =====================
+    # Build PC
+    # =====================
     - name: Build PC Package
       run: |
 
@@ -234,15 +232,14 @@ EOF
 
 
 
-    # ==========================
-    # 构建 APK
-    # ==========================
+    # =====================
+    # Build APK
+    # =====================
     - name: Build Android APK
       run: |
 
 
         cd renpy-8.5.3-sdk
-
 
 
         ./renpy.sh launcher android_build \
@@ -252,45 +249,49 @@ EOF
 
 
 
-    # ==========================
-    # 查看 APK
-    # ==========================
+    # =====================
+    # Check Result
+    # =====================
     - name: Check APK
       run: |
 
 
-        echo "APK files:"
+        echo "APK:"
 
 
-        find "$GAME_DIR" \
+        find "$GAME_DIR/bin" \
         -name "*.apk" \
-        -type f
+        -type f \
+        -exec ls -lh {} \;
 
 
 
 
-    # ==========================
-    # 上传 APK
-    # ==========================
+    # =====================
+    # Upload APK
+    # =====================
     - name: Upload APK
       uses: actions/upload-artifact@v4
+
       with:
 
         name: mygame-apk
 
         path: |
-          **/*.apk
+          **/bin/*.apk
 
 
 
-    # ==========================
-    # 上传 PC
-    # ==========================
+
+    # =====================
+    # Upload PC
+    # =====================
     - name: Upload PC
       uses: actions/upload-artifact@v4
+
       with:
 
         name: mygame-pc
 
         path: |
-          **/*.zip
+          **/dist/*.zip
