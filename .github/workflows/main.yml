@@ -9,104 +9,228 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout
         uses: actions/checkout@v4
+
 
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
-          distribution: temurin
+          java-version: '17'
+          distribution: 'temurin'
 
-      - name: Install tools
+
+      - name: Install Tools
         run: |
           sudo apt update
           sudo apt install -y wget unzip ant python3
 
+
       - name: Setup Android SDK
         run: |
-          SDK=$HOME/android-sdk
-          mkdir -p $SDK/cmdline-tools
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O tools.zip
-          unzip -q tools.zip -d $SDK/cmdline-tools
-          mkdir -p $SDK/cmdline-tools/latest
-          mv $SDK/cmdline-tools/cmdline-tools/* $SDK/cmdline-tools/latest/
-          echo "ANDROID_HOME=$SDK" >> $GITHUB_ENV
-          echo "ANDROID_SDK_ROOT=$SDK" >> $GITHUB_ENV
-          echo "$SDK/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          yes | $SDK/cmdline-tools/latest/bin/sdkmanager --licenses || true
-          $SDK/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-35" "build-tools;34.0.0"
+          SDK="$HOME/android-sdk"
+
+          mkdir -p "$SDK/cmdline-tools"
+
+          wget -q \
+            https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip \
+            -O tools.zip
+
+          unzip -q tools.zip -d "$SDK/cmdline-tools"
+
+          mkdir -p "$SDK/cmdline-tools/latest"
+
+          mv "$SDK/cmdline-tools/cmdline-tools/"* \
+            "$SDK/cmdline-tools/latest/"
+
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+          echo "$SDK/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses < /dev/null || true
+
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;34.0.0"
+
+
+      - name: Check Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --version
+          adb version
+
 
       - name: Find Game
         run: |
-          if [ -f game/options.rpy ]; then
-            echo "GAME=$GITHUB_WORKSPACE" >> $GITHUB_ENV
-          elif [ -f mygame/game/options.rpy ]; then
-            echo "GAME=$GITHUB_WORKSPACE/mygame" >> $GITHUB_ENV
+          if [ -f "$GITHUB_WORKSPACE/game/options.rpy" ]; then
+            echo "GAME=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
+          elif [ -f "$GITHUB_WORKSPACE/mygame/game/options.rpy" ]; then
+            echo "GAME=$GITHUB_WORKSPACE/mygame" >> "$GITHUB_ENV"
+
           else
-            echo "No RenPy game found"
-            find . -name options.rpy
+            echo "ERROR: Ren'Py game not found."
+
+            find "$GITHUB_WORKSPACE" \
+              -name options.rpy \
+              -print
+
             exit 1
           fi
+
+          echo "Game directory:"
+          echo "$GAME"
+
+
+      - name: Check Game Size
+        run: |
+          echo "Game size:"
+          du -sh "$GAME"
+
+          echo ""
+          echo "Large files:"
+          find "$GAME" -type f -size +50M -exec du -h {} \; | sort -h
+
 
       - name: Download RenPy
         run: |
-          wget -q https://www.renpy.org/dl/8.5.3/renpy-8.5.3-sdk.tar.bz2
+          wget -q \
+            https://www.renpy.org/dl/8.5.3/renpy-8.5.3-sdk.tar.bz2
+
           tar -xjf renpy-8.5.3-sdk.tar.bz2
-          wget -q https://www.renpy.org/dl/8.5.3/renpy-8.5.3-rapt.zip
-          unzip -q renpy-8.5.3-rapt.zip -d renpy-8.5.3-sdk/
 
-      - name: Configure
-        run: |
-          cd $GAME
-          keytool -genkeypair -v -keystore key.keystore -alias android -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=RenPy"
-          cp key.keystore "$GITHUB_WORKSPACE/android.keystore"
-          cat > android.json <<EOF
-          {
-              "package": "com.minc.game",
-              "name": "民中",
-              "icon_name": "民中",
-              "version": "1.0",
-              "numeric_version": 1,
-              "orientation": "sensorLandscape",
-              "permissions": ["VIBRATE", "INTERNET"],
-              "include_pil": false,
-              "include_sqlite": false,
-              "layout": null,
-              "source": false,
-              "expansion": false,
-              "google_play_key": null,
-              "google_play_salt": null,
-              "store": "none",
-              "update_icons": true,
-              "update_always": true,
-              "heap_size": "4",
-              "update_keystores": true
-          }
-          EOF
+          wget -q \
+            https://www.renpy.org/dl/8.5.3/renpy-8.5.3-rapt.zip
 
-      - name: Build APK
-        run: |
-          cd renpy-8.5.3-sdk
-          ./renpy.sh launcher android_build "$GAME" --destination "$GAME/bin"
+          unzip -q \
+            renpy-8.5.3-rapt.zip \
+            -d renpy-8.5.3-sdk/
 
-      - name: Find APK
+
+      - name: Prepare RAPT SDK
         run: |
-          echo "Searching for APK files..."
-          find "$GITHUB_WORKSPACE" -name "*.apk" -type f 2>/dev/null || true
-          APK_FILE=$(find "$GITHUB_WORKSPACE" -name "*.apk" -type f 2>/dev/null | head -n 1)
-          if [ -n "$APK_FILE" ]; then
-            echo "Found APK: $APK_FILE"
-            mkdir -p "$GAME/bin"
-            cp "$APK_FILE" "$GAME/bin/"
+          echo "$ANDROID_HOME" \
+            > "$GITHUB_WORKSPACE/renpy-8.5.3-sdk/rapt/sdk.txt"
+
+
+      - name: Generate Android Keys
+        run: |
+          cd "$GAME"
+
+          keytool -genkeypair \
+            -v \
+            -keystore android.keystore \
+            -alias android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass android \
+            -keypass android \
+            -dname "CN=RenPy Game,O=RenPy,C=US"
+
+          cp android.keystore bundle.keystore
+
+
+      - name: Configure Android Project
+        run: |
+          cd "$GITHUB_WORKSPACE/renpy-8.5.3-sdk"
+
+          ./renpy.sh launcher android_configure "$GAME"
+
+
+      - name: Show Android Configuration
+        run: |
+          echo "Android configuration files:"
+
+          ls -lah "$GAME" | grep -E \
+            'android|keystore|bundle' || true
+
+          echo ""
+          echo "android.json:"
+
+          if [ -f "$GAME/android.json" ]; then
+            cat "$GAME/android.json"
           else
-            echo "No APK found!"
+            echo "android.json was not generated."
+          fi
+
+
+      - name: Build Android APK
+        run: |
+          cd "$GITHUB_WORKSPACE/renpy-8.5.3-sdk"
+
+          rm -rf "$GAME/bin"
+
+          mkdir -p "$GAME/bin"
+
+          ./renpy.sh launcher android_build \
+            "$GAME" \
+            --destination "$GAME/bin"
+
+
+      - name: List APKs
+        run: |
+          echo "============================"
+          echo "APK FILES"
+          echo "============================"
+
+          find "$GAME/bin" \
+            -type f \
+            -name "*.apk" \
+            -exec ls -lh {} \;
+
+          echo ""
+          echo "All APK files generated by RAPT:"
+
+          find "$GITHUB_WORKSPACE/renpy-8.5.3-sdk/rapt/bin" \
+            -type f \
+            -name "*.apk" \
+            -exec ls -lh {} \; || true
+
+
+      - name: Select ARM64 APK
+        run: |
+          set -e
+
+          mkdir -p "$GAME/final"
+
+          echo "Searching for ARM64 APK..."
+
+          ARM64=$(find "$GAME/bin" \
+            -type f \
+            -name "*arm64-v8a*.apk" \
+            | head -n 1)
+
+          if [ -z "$ARM64" ]; then
+            echo "No ARM64 APK found."
+
+            echo ""
+            echo "Available APKs:"
+
+            find "$GAME/bin" \
+              -type f \
+              -name "*.apk" \
+              -exec ls -lh {} \;
+
             exit 1
           fi
 
-      - name: Upload APK
+          echo "Selected:"
+          echo "$ARM64"
+
+          cp "$ARM64" \
+            "$GAME/final/MinZhong-arm64-v8a.apk"
+
+          ls -lh "$GAME/final/MinZhong-arm64-v8a.apk"
+
+
+      - name: Upload ARM64 APK
         uses: actions/upload-artifact@v4
         with:
-          name: apk
-          path: "**/bin/*.apk"
+          name: MinZhong-Android-arm64
+          path: "${{ env.GAME }}/final/MinZhong-arm64-v8a.apk"
           if-no-files-found: error
