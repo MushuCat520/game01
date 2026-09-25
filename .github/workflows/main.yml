@@ -10,116 +10,293 @@ jobs:
 
     steps:
 
+      # ============================================================
+      # 1. Checkout
+      # ============================================================
       - name: Checkout
         uses: actions/checkout@v4
 
 
+      # ============================================================
+      # 2. Java 21
+      # ============================================================
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
 
 
+      # ============================================================
+      # 3. Install basic tools
+      # ============================================================
       - name: Install Tools
         run: |
-          sudo apt update
-          sudo apt install -y wget unzip ant python3
+          sudo apt-get update
+          sudo apt-get install -y wget unzip tar bzip2 ant
 
 
-      - name: Setup Android SDK
+      # ============================================================
+      # 4. Find Ren'Py Game
+      #
+      # 支持：
+      #   仓库根目录/game/options.rpy
+      #   mygame/game/options.rpy
+      # ============================================================
+      - name: Find Game
+        shell: bash
         run: |
-          SDK="$HOME/android-sdk"
+          set -e
+
+          if [ -f "$GITHUB_WORKSPACE/game/options.rpy" ]; then
+            GAME_DIR="$GITHUB_WORKSPACE"
+
+          elif [ -f "$GITHUB_WORKSPACE/mygame/game/options.rpy" ]; then
+            GAME_DIR="$GITHUB_WORKSPACE/mygame"
+
+          else
+            echo "ERROR: Ren'Py game not found."
+            echo ""
+            echo "Searching for options.rpy..."
+            find "$GITHUB_WORKSPACE" -name "options.rpy" -type f
+            exit 1
+          fi
+
+          echo "GAME_DIR=$GAME_DIR" >> "$GITHUB_ENV"
+
+          echo "========================================"
+          echo "Game directory:"
+          echo "$GAME_DIR"
+          echo "========================================"
+
+
+      # ============================================================
+      # 5. Check Game Size
+      #
+      # 非常重要：
+      # 如果这里出现几百 MB 的 SDK / zip，
+      # 就说明游戏目录里还有不该存在的东西。
+      # ============================================================
+      - name: Check Game Size
+        shell: bash
+        run: |
+          set -e
+
+          echo "========================================"
+          echo "Game directory size"
+          echo "========================================"
+
+          du -sh "$GAME_DIR"
+
+          echo ""
+          echo "Top-level files:"
+          du -sh "$GAME_DIR"/* 2>/dev/null | sort -h || true
+
+          echo ""
+          echo "Checking for suspicious build files..."
+
+          find "$GAME_DIR" -maxdepth 1 \
+            \( \
+              -name "renpy-*" \
+              -o -name "*.tar.bz2" \
+              -o -name "*.zip" \
+              -o -name "android-sdk" \
+              -o -name "Sdk" \
+            \) \
+            -print || true
+
+
+      # ============================================================
+      # 6. Setup Android SDK
+      #
+      # 注意：
+      # Android SDK 放在 RUNNER_TEMP
+      # 不放在 GITHUB_WORKSPACE
+      #
+      # 同时直接使用完整路径调用 sdkmanager / adb，
+      # 避免 PATH 导致 command not found。
+      # ============================================================
+      - name: Setup Android SDK
+        shell: bash
+        run: |
+          set -e
+
+          SDK="$RUNNER_TEMP/android-sdk"
+          TOOLS="$SDK/cmdline-tools/latest/bin"
+
+          echo "Android SDK:"
+          echo "$SDK"
 
           mkdir -p "$SDK/cmdline-tools"
 
           wget -q \
             https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip \
-            -O tools.zip
+            -O "$RUNNER_TEMP/android-commandline-tools.zip"
 
-          unzip -q tools.zip -d "$SDK/cmdline-tools"
+          unzip -q \
+            "$RUNNER_TEMP/android-commandline-tools.zip" \
+            -d "$SDK/cmdline-tools"
 
-          mkdir -p "$SDK/cmdline-tools/latest"
+          rm -rf "$SDK/cmdline-tools/latest"
 
-          mv "$SDK/cmdline-tools/cmdline-tools/"* \
-            "$SDK/cmdline-tools/latest/"
+          mv \
+            "$SDK/cmdline-tools/cmdline-tools" \
+            "$SDK/cmdline-tools/latest"
 
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
 
-          echo "$SDK/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$TOOLS" >> "$GITHUB_PATH"
+          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
 
-          "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses < /dev/null || true
+          echo "========================================"
+          echo "Accepting Android licenses"
+          echo "========================================"
 
-          "$SDK/cmdline-tools/latest/bin/sdkmanager" \
+          yes | "$TOOLS/sdkmanager" --licenses >/dev/null 2>&1 || true
+
+          echo "========================================"
+          echo "Installing Android packages"
+          echo "========================================"
+
+          "$TOOLS/sdkmanager" \
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;34.0.0"
 
+          echo "========================================"
+          echo "Android SDK installed"
+          echo "========================================"
 
-      - name: Check Android SDK
-        run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --version
-          adb version
-
-
-      - name: Find Game
-        run: |
-          if [ -f "$GITHUB_WORKSPACE/game/options.rpy" ]; then
-            echo "GAME=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
-
-          elif [ -f "$GITHUB_WORKSPACE/mygame/game/options.rpy" ]; then
-            echo "GAME=$GITHUB_WORKSPACE/mygame" >> "$GITHUB_ENV"
-
-          else
-            echo "ERROR: Ren'Py game not found."
-
-            find "$GITHUB_WORKSPACE" \
-              -name options.rpy \
-              -print
-
-            exit 1
-          fi
-
-          echo "Game directory:"
-          echo "$GAME"
-
-
-      - name: Check Game Size
-        run: |
-          echo "Game size:"
-          du -sh "$GAME"
+          ls -la "$SDK"
 
           echo ""
-          echo "Large files:"
-          find "$GAME" -type f -size +50M -exec du -h {} \; | sort -h
+          echo "platform-tools:"
+          ls -la "$SDK/platform-tools"
 
 
-      - name: Download RenPy
+      # ============================================================
+      # 7. Check Android SDK
+      # ============================================================
+      - name: Check Android SDK
+        shell: bash
         run: |
+          set -e
+
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+
+          echo ""
+          echo "Checking adb..."
+
+          "$ANDROID_HOME/platform-tools/adb" version
+
+          echo ""
+          echo "Checking sdkmanager..."
+
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --version
+
+          echo ""
+          echo "Android SDK OK."
+
+
+      # ============================================================
+      # 8. Download Ren'Py 8.5.3
+      #
+      # 重点：
+      # 放到 RUNNER_TEMP！
+      #
+      # 绝对不要放到 GITHUB_WORKSPACE，
+      # 否则会被 Ren'Py 当成游戏文件打包。
+      # ============================================================
+      - name: Download RenPy 8.5.3
+        shell: bash
+        run: |
+          set -e
+
+          BUILD_ROOT="$RUNNER_TEMP/renpy-build"
+          RENPY_DIR="$BUILD_ROOT/renpy-8.5.3-sdk"
+
+          mkdir -p "$BUILD_ROOT"
+
+          echo "BUILD_ROOT=$BUILD_ROOT" >> "$GITHUB_ENV"
+          echo "RENPY_DIR=$RENPY_DIR" >> "$GITHUB_ENV"
+
+          cd "$BUILD_ROOT"
+
+          echo "========================================"
+          echo "Downloading Ren'Py SDK"
+          echo "========================================"
+
           wget -q \
-            https://www.renpy.org/dl/8.5.3/renpy-8.5.3-sdk.tar.bz2
+            https://www.renpy.org/dl/8.5.3/renpy-8.5.3-sdk.tar.bz2 \
+            -O renpy-8.5.3-sdk.tar.bz2
 
           tar -xjf renpy-8.5.3-sdk.tar.bz2
 
+          echo "========================================"
+          echo "Downloading RAPT"
+          echo "========================================"
+
           wget -q \
-            https://www.renpy.org/dl/8.5.3/renpy-8.5.3-rapt.zip
+            https://www.renpy.org/dl/8.5.3/renpy-8.5.3-rapt.zip \
+            -O renpy-8.5.3-rapt.zip
 
           unzip -q \
             renpy-8.5.3-rapt.zip \
-            -d renpy-8.5.3-sdk/
+            -d "$RENPY_DIR"
+
+          echo "========================================"
+          echo "Ren'Py SDK ready"
+          echo "========================================"
+
+          ls -lah "$BUILD_ROOT"
+
+          echo ""
+          echo "Ren'Py directory:"
+          ls -lah "$RENPY_DIR"
 
 
-      - name: Prepare RAPT SDK
+      # ============================================================
+      # 9. Tell RAPT where Android SDK is
+      # ============================================================
+      - name: Configure RAPT SDK
+        shell: bash
         run: |
+          set -e
+
           echo "$ANDROID_HOME" \
-            > "$GITHUB_WORKSPACE/renpy-8.5.3-sdk/rapt/sdk.txt"
+            > "$RENPY_DIR/rapt/sdk.txt"
+
+          echo "RAPT SDK path:"
+          cat "$RENPY_DIR/rapt/sdk.txt"
+
+          echo ""
+          echo "Checking RAPT adb:"
+          "$RENPY_DIR/rapt/$(
+            echo "platform-tools/adb"
+          )" version || true
 
 
+      # ============================================================
+      # 10. Generate Android Keys
+      #
+      # Ren'Py/RAPT 需要 android.keystore 和 bundle.keystore
+      # 放在游戏项目根目录。
+      #
+      # 只有几 KB，不会导致 APK 变大。
+      # ============================================================
       - name: Generate Android Keys
+        shell: bash
         run: |
-          cd "$GAME"
+          set -e
+
+          cd "$GAME_DIR"
+
+          rm -f android.keystore
+          rm -f bundle.keystore
+
+          echo "Generating android.keystore..."
 
           keytool -genkeypair \
             -v \
@@ -130,107 +307,246 @@ jobs:
             -validity 10000 \
             -storepass android \
             -keypass android \
-            -dname "CN=RenPy Game,O=RenPy,C=US"
+            -dname "CN=RenPy Android"
 
           cp android.keystore bundle.keystore
 
+          echo ""
+          echo "Keys created:"
+          ls -lh android.keystore bundle.keystore
 
+
+      # ============================================================
+      # 11. Create Android configuration
+      #
+      # 这是 RAPT 8.5.3 使用的 android.json 格式。
+      # ============================================================
       - name: Configure Android Project
+        shell: bash
         run: |
-          cd "$GITHUB_WORKSPACE/renpy-8.5.3-sdk"
+          set -e
 
-          ./renpy.sh launcher android_configure "$GAME"
+          cd "$GAME_DIR"
 
+          cat > android.json <<'EOF'
+{
+    "package": "com.minc.game",
+    "name": "民中",
+    "icon_name": "民中",
+    "version": "1.0",
+    "numeric_version": 1,
+    "orientation": "sensorLandscape",
+    "permissions": [
+        "VIBRATE",
+        "INTERNET"
+    ],
+    "include_pil": false,
+    "include_sqlite": false,
+    "layout": null,
+    "source": false,
+    "expansion": false,
+    "google_play_key": null,
+    "google_play_salt": null,
+    "store": "none",
+    "update_icons": true,
+    "update_always": true,
+    "heap_size": "4",
+    "update_keystores": true
+}
+EOF
 
-      - name: Show Android Configuration
-        run: |
-          echo "Android configuration files:"
+          echo "========================================"
+          echo "android.json"
+          echo "========================================"
 
-          ls -lah "$GAME" | grep -E \
-            'android|keystore|bundle' || true
+          cat android.json
 
           echo ""
-          echo "android.json:"
+          echo "Checking package name..."
 
-          if [ -f "$GAME/android.json" ]; then
-            cat "$GAME/android.json"
-          else
-            echo "android.json was not generated."
+          grep '"package"' android.json
+
+          echo ""
+          echo "Checking game directory..."
+          du -sh "$GAME_DIR"
+
+
+      # ============================================================
+      # 12. IMPORTANT:
+      # Make absolutely sure Ren'Py SDK did NOT enter game folder
+      # ============================================================
+      - name: Final Game Directory Check
+        shell: bash
+        run: |
+          set -e
+
+          echo "========================================"
+          echo "Game directory before Android build"
+          echo "========================================"
+
+          du -sh "$GAME_DIR"
+
+          echo ""
+          echo "Top-level contents:"
+          find "$GAME_DIR" -maxdepth 1 -mindepth 1 -printf "%f\n" | sort
+
+          echo ""
+          echo "Looking for accidental SDK files..."
+
+          BAD=0
+
+          for ITEM in \
+            "renpy-8.5.3-sdk" \
+            "renpy-8.5.3-sdk.tar.bz2" \
+            "renpy-8.5.3-rapt.zip" \
+            "android-sdk" \
+            "Sdk"
+          do
+            if [ -e "$GAME_DIR/$ITEM" ]; then
+              echo "ERROR: Found unwanted build file: $GAME_DIR/$ITEM"
+              BAD=1
+            fi
+          done
+
+          if [ "$BAD" -ne 0 ]; then
+            echo ""
+            echo "The game directory contains build tools."
+            echo "This would make the APK huge."
+            exit 1
           fi
 
+          echo ""
+          echo "Game directory is clean."
 
-      - name: Build Android APK
+
+      # ============================================================
+      # 13. Build Android APK
+      # ============================================================
+      - name: Build APK
+        shell: bash
         run: |
-          cd "$GITHUB_WORKSPACE/renpy-8.5.3-sdk"
+          set -e
 
-          rm -rf "$GAME/bin"
+          echo "========================================"
+          echo "Starting Ren'Py Android build"
+          echo "========================================"
 
-          mkdir -p "$GAME/bin"
+          cd "$RENPY_DIR"
 
           ./renpy.sh launcher android_build \
-            "$GAME" \
-            --destination "$GAME/bin"
-
-
-      - name: List APKs
-        run: |
-          echo "============================"
-          echo "APK FILES"
-          echo "============================"
-
-          find "$GAME/bin" \
-            -type f \
-            -name "*.apk" \
-            -exec ls -lh {} \;
+            "$GAME_DIR" \
+            --destination "$RUNNER_TEMP/apk-output"
 
           echo ""
-          echo "All APK files generated by RAPT:"
+          echo "========================================"
+          echo "Build finished"
+          echo "========================================"
 
-          find "$GITHUB_WORKSPACE/renpy-8.5.3-sdk/rapt/bin" \
+          find "$RENPY_DIR/rapt/bin" \
+            -type f \
+            -name "*.apk" \
+            -exec ls -lh {} \; || true
+
+          echo ""
+          echo "Destination:"
+          find "$RUNNER_TEMP/apk-output" \
             -type f \
             -name "*.apk" \
             -exec ls -lh {} \; || true
 
 
-      - name: Select ARM64 APK
+      # ============================================================
+      # 14. Find APK
+      # ============================================================
+      - name: Find APK
+        shell: bash
         run: |
           set -e
 
-          mkdir -p "$GAME/final"
+          echo "========================================"
+          echo "Searching APK files"
+          echo "========================================"
 
-          echo "Searching for ARM64 APK..."
-
-          ARM64=$(find "$GAME/bin" \
+          find "$RENPY_DIR/rapt/bin" \
             -type f \
-            -name "*arm64-v8a*.apk" \
+            -name "*.apk" \
+            -print || true
+
+          find "$RUNNER_TEMP/apk-output" \
+            -type f \
+            -name "*.apk" \
+            -print || true
+
+          APK=$(find "$RENPY_DIR/rapt/bin" \
+            -type f \
+            -name "*.apk" \
             | head -n 1)
 
-          if [ -z "$ARM64" ]; then
-            echo "No ARM64 APK found."
-
-            echo ""
-            echo "Available APKs:"
-
-            find "$GAME/bin" \
+          if [ -z "$APK" ]; then
+            APK=$(find "$RUNNER_TEMP/apk-output" \
               -type f \
               -name "*.apk" \
-              -exec ls -lh {} \;
+              | head -n 1)
+          fi
 
+          if [ -z "$APK" ]; then
+            echo "ERROR: No APK found!"
             exit 1
           fi
 
-          echo "Selected:"
-          echo "$ARM64"
+          echo "APK_FILE=$APK" >> "$GITHUB_ENV"
 
-          cp "$ARM64" \
-            "$GAME/final/MinZhong-arm64-v8a.apk"
+          echo ""
+          echo "Selected APK:"
+          echo "$APK"
 
-          ls -lh "$GAME/final/MinZhong-arm64-v8a.apk"
+          echo ""
+          echo "APK size:"
+          du -h "$APK"
 
 
-      - name: Upload ARM64 APK
+      # ============================================================
+      # 15. Check APK contents
+      #
+      # 如果这里发现 x-renpy-8.5.3-sdk，
+      # 就说明 SDK 又被错误打进去了。
+      # ============================================================
+      - name: Check APK Size
+        shell: bash
+        run: |
+          set -e
+
+          echo "========================================"
+          echo "Final APK"
+          echo "========================================"
+
+          ls -lh "$APK_FILE"
+
+          echo ""
+          echo "APK size in bytes:"
+          stat -c "%s" "$APK_FILE"
+
+          echo ""
+          echo "Checking for accidentally packaged SDK..."
+
+          if unzip -l "$APK_FILE" | grep -E \
+            "x-renpy-8.5.3-sdk|renpy-8.5.3-sdk.tar|renpy-8.5.3-rapt.zip|x-sdk.zip"
+          then
+            echo ""
+            echo "ERROR: Ren'Py SDK files were packaged into APK!"
+            exit 1
+          fi
+
+          echo ""
+          echo "APK does not contain the Ren'Py SDK."
+
+
+      # ============================================================
+      # 16. Upload APK
+      # ============================================================
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: MinZhong-Android-arm64
-          path: "${{ env.GAME }}/final/MinZhong-arm64-v8a.apk"
+          name: minzhong-android-apk
+          path: ${{ env.APK_FILE }}
           if-no-files-found: error
