@@ -4,147 +4,62 @@ on:
   workflow_dispatch:
   push:
 
-
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
-
     steps:
-
     - name: Checkout
       uses: actions/checkout@v4
-
-
 
     - name: Setup Java
       uses: actions/setup-java@v4
       with:
-        java-version: '17'
+        java-version: '21'
         distribution: temurin
-
-
 
     - name: Install tools
       run: |
         sudo apt update
         sudo apt install -y wget unzip ant python3
 
-
-
-    # Android SDK
     - name: Setup Android SDK
       run: |
-
         SDK=$HOME/android-sdk
-
         mkdir -p $SDK/cmdline-tools
-
-
-        wget -q \
-        https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip \
-        -O tools.zip
-
-
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O tools.zip
         unzip -q tools.zip -d $SDK/cmdline-tools
-
-
         mkdir -p $SDK/cmdline-tools/latest
-
-
-        mv $SDK/cmdline-tools/cmdline-tools/* \
-        $SDK/cmdline-tools/latest/
-
-
+        mv $SDK/cmdline-tools/cmdline-tools/* $SDK/cmdline-tools/latest/
         echo "ANDROID_HOME=$SDK" >> $GITHUB_ENV
         echo "ANDROID_SDK_ROOT=$SDK" >> $GITHUB_ENV
-
-
         echo "$SDK/cmdline-tools/latest/bin" >> $GITHUB_PATH
-
-
         yes | $SDK/cmdline-tools/latest/bin/sdkmanager --licenses || true
+        $SDK/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-35" "build-tools;34.0.0"
 
-
-        $SDK/cmdline-tools/latest/bin/sdkmanager \
-        "platform-tools" \
-        "platforms;android-35" \
-        "build-tools;35.0.0"
-
-
-
-
-    # 找游戏
     - name: Find Game
       run: |
-
         if [ -f game/options.rpy ]; then
-
           echo "GAME=$GITHUB_WORKSPACE" >> $GITHUB_ENV
-
-
         elif [ -f mygame/game/options.rpy ]; then
-
           echo "GAME=$GITHUB_WORKSPACE/mygame" >> $GITHUB_ENV
-
-
         else
-
           echo "No RenPy game found"
-
           find . -name options.rpy
-
           exit 1
-
         fi
 
-
-
-
-    # 下载RenPy
     - name: Download RenPy
       run: |
-
-        wget -q \
-        https://www.renpy.org/dl/8.5.3/renpy-8.5.3-sdk.tar.bz2
-
-
+        wget -q https://www.renpy.org/dl/8.5.3/renpy-8.5.3-sdk.tar.bz2
         tar -xjf renpy-8.5.3-sdk.tar.bz2
+        wget -q https://www.renpy.org/dl/8.5.3/renpy-8.5.3-rapt.zip
+        unzip -q renpy-8.5.3-rapt.zip -d renpy-8.5.3-sdk/
 
-
-        wget -q \
-        https://www.renpy.org/dl/8.5.3/renpy-8.5.3-rapt.zip
-
-
-        unzip -q \
-        renpy-8.5.3-rapt.zip \
-        -d renpy-8.5.3-sdk/
-
-
-
-
-    # 配置
     - name: Configure
       run: |
-
         cd $GAME
-
-
-        keytool \
-        -genkeypair \
-        -v \
-        -keystore key.keystore \
-        -alias key \
-        -keyalg RSA \
-        -keysize 2048 \
-        -validity 10000 \
-        -storepass android \
-        -keypass android \
-        -dname "CN=RenPy"
-
-
-
+        keytool -genkeypair -v -keystore key.keystore -alias key -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=RenPy"
         cat > android.json <<EOF
 {
 "package":"com.minc.game",
@@ -158,35 +73,19 @@ jobs:
 }
 EOF
 
-
-
-
-    # APK
     - name: Build APK
       run: |
-
         cd renpy-8.5.3-sdk
+        ./renpy.sh launcher android_build "$GAME" --destination "$GAME/bin"
 
-
-        ./renpy.sh launcher android_build \
-        "$GAME"
-
-
-
-    # 找APK
     - name: Find APK
       run: |
-
-        find . -name "*.apk"
-
-
-
+        echo "APKs found:"
+        find "$GAME" -name "*.apk" -type f
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-
         name: apk
-
-        path: |
-          **/*.apk
+        path: "$GAME/bin/*.apk"
+        if-no-files-found: error
