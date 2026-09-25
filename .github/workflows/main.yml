@@ -92,8 +92,17 @@ jobs:
 
       - name: Find APK
         run: |
-          echo "APKs found:"
-          find "$GAME" -name "*.apk" -type f
+          echo "Searching for APK files..."
+          find "$GITHUB_WORKSPACE" -name "*.apk" -type f 2>/dev/null || true
+          APK_FILE=$(find "$GITHUB_WORKSPACE" -name "*.apk" -type f 2>/dev/null | head -n 1)
+          if [ -n "$APK_FILE" ]; then
+            echo "Found APK: $APK_FILE"
+            mkdir -p "$GAME/bin"
+            cp "$APK_FILE" "$GAME/bin/"
+          else
+            echo "No APK found!"
+            exit 1
+          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
