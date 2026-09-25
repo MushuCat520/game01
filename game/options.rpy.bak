@@ -1,0 +1,13 @@
+define config.name = _("民中")
+define config.version = "0.78"
+
+define config.window_title = _("民中")
+
+# 中文字体
+define gui.text_font = "fonts/NotoSansCJK.ttc"
+define gui.name_text_font = "fonts/NotoSansCJK.ttc"
+define gui.interface_text_font = "fonts/NotoSansCJK.ttc"
+
+# 默认字体
+init python:
+    style.default.font = "fonts/NotoSansCJK.ttc"

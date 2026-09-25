@@ -1,0 +1,67 @@
+# ============================================================
+# 《民中》主菜单
+# ============================================================
+
+screen main_menu():
+
+    tag menu
+
+    # 背景图片（自动等比缩放填满屏幕）
+    add Transform("images/menu_bg.jpg", size=(1920, 1080), fit="cover")
+
+    # 顶部装饰线
+    add Solid("#D8A9B8") xpos 0.18 ypos 0.08 xsize 0.64 ysize 3
+
+    # 游戏标题
+    text "民中":
+        xpos 0.5
+        ypos 0.20
+        anchor (0.5, 0.5)
+        size 80
+        color "#49373D"
+
+    text "MIN ZHONG":
+        xpos 0.5
+        ypos 0.27
+        anchor (0.5, 0.5)
+        size 24
+        color "#8C6D76"
+
+    # 副标题
+    text "——我们的校园日常——":
+        xpos 0.5
+        ypos 0.35
+        anchor (0.5, 0.5)
+        size 25
+        color "#6D555D"
+
+    # 菜单
+    vbox:
+        xpos 0.5
+        ypos 0.50
+        xanchor 0.5
+        spacing 18
+
+        textbutton "开始游戏":
+            xalign 0.5
+            action Start()
+
+        textbutton "读取存档":
+            xalign 0.5
+            action ShowMenu("load")
+
+        textbutton "游戏设置":
+            xalign 0.5
+            action ShowMenu("preferences")
+
+        textbutton "退出游戏":
+            xalign 0.5
+            action Quit(confirm=True)
+
+    # 底部
+    text "v1.0":
+        xpos 0.5
+        ypos 0.93
+        anchor (0.5, 0.5)
+        size 18
+        color "#8C6D76"
